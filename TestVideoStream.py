@@ -27,8 +27,10 @@ def convertNumpyArrayToMat(img):
 
 videoFilePath = "..\\RealTime Video\\CV_2_cropped.mp4"
 
-model_vgg = model_from_checkpoint_path("..\\Checkpoints\\Tool\\vgg_unet_tool")
-model = model_from_checkpoint_path("..\\Checkpoints\\Tool\\resnet_unet_tool")
+model_vgg = model_from_checkpoint_path("..\\Checkpoints\\NewTool\\new_vgg_unet_tool")
+model_resnet = model_from_checkpoint_path("..\\Checkpoints\\NewTool\\new_resnet_unet_tool")
+model_mobilenet = model_from_checkpoint_path("..\\Checkpoints\\NewTool\\new_mobilenet_unet_tool")
+model_unet = model_from_checkpoint_path("..\\Checkpoints\\NewTool\\new_unet_tool")
 
 cap = cv2.VideoCapture(videoFilePath)
 i = 0
@@ -42,14 +44,23 @@ while cap.isOpened():
     frame = cv2.resize(frame, dim, interpolation=cv2.INTER_LINEAR)
 
     if (i % 5) == 0:
-        out = model.predict_segmentation(inp=frame)
-        img = convertNumpyArrayToMat(out)
+        out_resnet = model_resnet.predict_segmentation(inp=frame)
+        img_resnet = convertNumpyArrayToMat(out_resnet)
 
         out_vgg = model_vgg.predict_segmentation(inp=frame)
         img_vgg = convertNumpyArrayToMat(out_vgg)
 
-    cv2.imshow('ResNet', img)
+        out_mobilenet = model_mobilenet.predict_segmentation(inp=frame)
+        img_mobilenet = convertNumpyArrayToMat(out_mobilenet)
+
+        out_unet = model_unet.predict_segmentation(inp=frame)
+        img_unet = convertNumpyArrayToMat(out_unet)
+
+    cv2.imshow('ResNet', img_resnet)
     cv2.imshow('VGG', img_vgg)
+    cv2.imshow('MobileNet', img_mobilenet)
+    cv2.imshow('Unet', img_unet)
+
     cv2.imshow('Original', frame)
 
     if cv2.waitKey(25) & 0xFF == ord('q'):

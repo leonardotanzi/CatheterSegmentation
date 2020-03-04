@@ -2,7 +2,7 @@ from tqdm import tqdm
 import os 
 import cv2
 
-path = "..\\Dataset\\i_30\\Validation\\Tool\\LabelsVOC\\"
+path = "..\\Dataset\\i_30\\Train\\NewTool\\LabelsVOC\\"
 
 for img in tqdm(os.listdir(path)):
 	print(img)
@@ -28,4 +28,4 @@ for img in tqdm(os.listdir(path)):
 					x[i, j, 1] = 2
 					x[i, j, 2] = 2
 
-		cv2.imwrite("..\\Dataset\\i_30\\Validation\\Tool\\Labels\\{}".format(img), x)
+		cv2.imwrite("..\\Dataset\\i_30\\Train\\NewTool\\Labels\\{}".format(img), x)
