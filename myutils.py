@@ -5,6 +5,44 @@ import cv2
 class_colors: List[Tuple[int, int, int]] = [(0, 0, 0), (255, 0, 0), (0, 255, 0)]
 scale_percent = 60  # percent of original size
 
+
+class CircularBuffer:
+
+    def __init__(self, len):
+        self.len = len
+        self.data = []
+        self.count = 0
+
+    def add_to_buf(self, val):
+        self.count += 1
+
+        if self.count <= self.len:
+            self.data.append(val)
+        else:
+            for i in range(self.len - 1):
+                tmp = self.data[i + 1]
+                self.data[i] = tmp
+            self.data[self.len - 1] = val
+
+        return self.data
+
+    def get(self):
+        return self.data
+
+    def avg(self):
+        m = np.mean(self.data)
+        if self.count == 0:
+             return 0
+        else:
+            return m
+
+
+def compute_angle(ax, ay, bx, by, cx, cy, dx, dy):
+    alpha0 = np.degrees(np.arctan2(by - ay, bx - ax))
+    alpha1 = np.degrees(np.arctan2(dy - cy, dx - cx))
+    return abs(alpha1 - alpha0)
+
+
 def convert_np_to_mat(img):
     seg_img = np.zeros((img.shape[0], img.shape[1], 3))
     colors = class_colors
