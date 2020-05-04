@@ -1,0 +1,5 @@
+Prima taggare con labelme
+poi usare conversion.txt per ottenere i VOC
+poi usare il codice per convertire nel formato che serve 
+
+ordine (Back, tool, Cat)

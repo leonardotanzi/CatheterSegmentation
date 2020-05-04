@@ -1,1 +1,0 @@
-python C:\Users\d053175\Desktop\GitHubLibs\labelme-master\labelme-master\examples\semantic_segmentation\labelme2voc.py C:\Users\d053175\Desktop\Catetere\Dataset\i_30\Train\NewTool\JSON C:\Users\d053175\Desktop\data2 --labels C:\Users\d053175\Desktop\Catetere\CatheterSegmentation\labels.txt

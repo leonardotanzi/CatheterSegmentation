@@ -1,7 +1,8 @@
 import numpy as np
+import math
 from vtk import *
 
-# 540 è l'altezza dello schermo
+# 540 è l'altezza della finestra
 def project_point_plane(pointxy, point_z=1.0, origin=[0, 0, 0], normal=[0, 0, 1]):
     projected_point = np.zeros(3)
     p = [pointxy[0], 540 - pointxy[1], point_z]
@@ -30,44 +31,35 @@ def get_screenshot(ren_win, fname, mag=10):
     writer.SetInputConnection(w2if.GetOutputPort())
     writer.Write()
 
+def multiDimenDist(point1,point2):
+   #find the difference between the two points, its really the same as below
+   deltaVals = [point2[dimension]-point1[dimension] for dimension in range(len(point1))]
+   runningSquared = 0
+   #because the pythagarom theorm works for any dimension we can just use that
+   for coOrd in deltaVals:
+       runningSquared += coOrd**2
+   return runningSquared**(1/2)
 
-# queste due funzioni sono il tentativo (terribile) di riscrivere le tue da c++, non le utilizzo per ora
-''''
-def get_3d_matrix(point):
-    point_3d = [point[0], 500 - point[1], 0]  # 0 è la distanza dallo schermo per ora, 500 metà della finestra
 
-    origin, direction = converTo3DRay(point_3d)
-    # converto to 3d ray,
+def findVec(point1,point2,unitSphere = False):
+  #setting unitSphere to True will make the vector scaled down to a sphere with a radius one, instead of it's orginal length
+  finalVector = [0 for coOrd in point1]
+  for dimension, coOrd in enumerate(point1):
+      #finding total differnce for that co-ordinate(x,y,z...)
+      deltaCoOrd = point2[dimension]-coOrd
+      #adding total difference
+      finalVector[dimension] = deltaCoOrd
+  if unitSphere:
+      totalDist = multiDimenDist(point1,point2)
+      unitVector =[]
+      for dimen in finalVector:
+          unitVector.append( dimen/totalDist)
+      return unitVector
+  else:
+      return finalVector
 
-    Affine3d ret;
-    Vec3d v;
+def AngleBetween(v1, v2):
+    x = v2[0] - v1[0]
+    y = v2[1] - v1[1]
 
-    if (isAutoScaling) computeSize(); // è attivo lo scalamento automatico, lo computa...
-    v[0] = origin.x + direction.val[0] * sz;
-    v[1] = origin.y + direction.val[1] * sz;
-    v[2] = origin.z + direction.val[2] * sz;
-
-    // cout << "v: " << v << endl;
-    ret.translation(v);
-
-    return ret;
-
-# a questa io passo il punto di aggancio e alpa, e lui restituisce la matrice da applicare a tutti gli oggetti (cioè al catetere nel nostro caso) per spostarlo li
-def position_and_rotate(apex, alpha):
-    wm = []
-    wm3 = []
-
-    # CHE MATRICI SONO? 3X3?
-    wm[0] = wm[5] = cos(alpha)
-    wm[1] = -sin(alpha)
-    wm[4] = sin(alpha)
-
-    # COME RICAVO BETA?
-    wm3[5] = wm3[10] = cos(beta_ / 180.0 * np.pi)
-    wm3[6] = -sin(beta_ / 180.0 * np.pi)
-    wm3[9] = sin(beta_ / 180.0 * np.pi)
-
-    wm = get_3d_matrix(apex) * wm * wm3
-
-    # poi devo applicare questo all'oggetto catetere
-'''
+    return math.atan2(x, y)
