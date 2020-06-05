@@ -58,8 +58,33 @@ def findVec(point1,point2,unitSphere = False):
   else:
       return finalVector
 
+
 def AngleBetween(v1, v2):
     x = v2[0] - v1[0]
     y = v2[1] - v1[1]
 
     return math.atan2(x, y)
+
+
+def getAngleFromGreenPixels(greenImg):
+
+    [x, y] = greenImg.nonzero()
+
+    if len(y) != 0:
+
+        ymin = y.min()
+        ymax = y.max()
+
+        yavg = (ymax + ymin) / 2
+
+        cntUp = len(y[y > yavg])
+        cntDwn = len(y[y <= yavg])
+
+
+        if cntDwn == 0:
+           return 0
+        else:
+           return cntUp / cntDwn
+
+    else:
+        return 0

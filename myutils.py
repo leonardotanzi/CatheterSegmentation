@@ -1,6 +1,9 @@
 import numpy as np
 from typing import List, Tuple
 import cv2
+from xlwt import Workbook
+import xlrd
+from xlutils.copy import copy
 
 class_colors: List[Tuple[int, int, int]] = [(0, 0, 0), (255, 0, 0), (0, 255, 0)]
 scale_percent = 60  # percent of original size
@@ -110,4 +113,68 @@ def apex(v):
     v = sorted(v, key=take_second)
     p = np.int((v[0][0] + v[1][0]) / 2), np.int((v[0][1] + v[1][1]) / 2)
     return p
+
+# divide i punti tra destri e sinistri
+def divideHullPoints(hull, centerX):
+    left = []
+    right = []
+    for n in range(0, len(hull)):
+        if hull[n][0][0] < centerX:
+            left.append((hull[n][0][0], hull[n][0][1]))
+        else:
+            right.append((hull[n][0][0], hull[n][0][1]))
+
+    #left.sort( key=lambda x: x[0])
+    #right.sort(key=lambda x: x[0])
+
+    #qui invece tengo i punti soltanto se il segmento è lungo abbastanza
+    left_f = []
+    right_f = []
+
+    for n in range(0, len(left) - 1): #l'ultimo punto non lo considero e lo escludo di base
+        dist = math.sqrt((left[n][0]-left[n+1][0]) * (left[n][0]-left[n+1][0]) + (left[n][1]-left[n+1][1]) * (left[n][1]-left[n+1][1]))
+        if dist > 30:
+            left_f.append((left[n][0], left[n][1]))
+
+    for i in range(0, len(right) - 1): #l'ultimo punto non lo considero e lo escludo di base
+        dist = math.sqrt((right[i][0]-right[i+1][0]) * (right[i][0]-right[i+1][0]) + (right[i][1]-right[i+1][1]) * (right[i][1]-right[i+1][1]))
+        if dist > 30:
+            right_f.append((right[i][0], right[i][1]))
+
+    left_f.sort(key=lambda x: x[0])
+    right_f.sort(key=lambda x: x[0])
+
+    return np.array(left_f, dtype=np.int32), np.array(right_f, dtype=np.int32)
+
+
+def create_excel(name):
+    wb = Workbook()
+
+    sheet = wb.add_sheet(name)
+
+    sheet.write(0, 0, "Name")
+    sheet.write(0, 1, "Angle")
+
+    wb.save(".\\{}.xls".format(name))
+
+
+def edit_excel(name_excel, beta, name_image, i):
+
+    rb = xlrd.open_workbook(name_excel + ".xls")
+    wb = copy(rb)
+
+    sheet = rb.sheet_by_index(0)
+    sheet.cell_value(0, 0)
+
+    s = wb.get_sheet(0)
+
+    # for path in glob.glob(root + "*.png")
+    # name = path.split("/")[-1].split(".")[0]
+
+    s.write(i + 1, 0, name_image.split(".")[0])
+
+    s.write(i + 1, 1, beta)
+
+    wb.save(name_excel + ".xls")
+
 

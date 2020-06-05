@@ -21,54 +21,65 @@ obj_path = "Objects\\"
 dim = (960, 540)  # dimensioni finestra
 
 freezed = False
+autoRotateX = False
+frameNumber = 0
 slide = 0
-viewangle = 0
+viewangle = 45  # di default vtk mette 30
 
 modelfiles = []
 modelactors = list()
 modelopacity = list()
 modelmappers = list()
-modelnames  = list() #qui ci sono i soli nomi delle mesh. L'indice del nome corrisponde all'indice dell'actor.
+modelnames = list()  # qui ci sono i soli nomi delle mesh. L'indice del nome corrisponde all'indice dell'actor.
+
+world_matrix = vtk.vtkMatrix4x4()  # la matrice di posizionamento delle mesh, globale
 
 sceneRen = vtk.vtkRenderer()  # questo per il catetere e la prostata 3D
 sceneRen.SetLayer(1)
 backgr = vtk.vtkRenderer()  # questo per l'immagine di sfondo
 backgr.SetLayer(0)
+renWin = vtk.vtkRenderWindow()
 
-#scala automatica del catetere
-STARTING_SIZE = 120.0
-distance = STARTING_SIZE #distanza della prostata.
+# scala automatica del catetere
+STARTING_SIZE = 80.0
+distance = STARTING_SIZE  # distanza della prostata.
 STARTING_BETA = 0.0
-beta = STARTING_BETA #rotazione della prostata antero-posteriore
-registeredLenght = 80.0 # lunghezza in pixel del catetere... viene modificata a mano coi tasti + e -
-newLenght = 1.0 # lunghezza della retta che interseca il punto d'apice (segmento superiore del bbox)
+beta = STARTING_BETA  # rotazione della prostata antero-posteriore
+registeredLenght = 80.0  # lunghezza in pixel del catetere... viene modificata a mano coi tasti + e -
+newLenght = 1.0  # lunghezza della retta che interseca il punto d'apice (segmento superiore del bbox)
 
-#per le operazioni di filtraggio
-lastframeapex = [0,0]
+x_angle_buffer = [0, 0,
+                  0]  # in posizione [0] c'è l'angolo del frame attuale, in [1] quello del frame -1, in [2] quello del frame -2 in radianti
+
+# per le operazioni di filtraggio
+lastframeapex = [0, 0]
 lastframedistance = 0
 lastframeaZangle = 0
 lastframeaXangle = 0
 
-#GUI globals
+# GUI globals
 fov_text_actor = vtk.vtkTextActor()
 size_text_actor = vtk.vtkTextActor()
 xrot_text_actor = vtk.vtkTextActor()
 slide_text_actor = vtk.vtkTextActor()
+freezed_text_actor = vtk.vtkTextActor()
+isBoxWidgetOn = False
+boxWidget = vtk.vtkBoxWidget()
 
 
 class MyInteractorStyle(vtk.vtkInteractorStyle):
 
-    def __init__(self,parent=None):
+    def __init__(self, parent=None):
 
         self.parent = iren
         self.AddObserver("KeyPressEvent", self.keyPressEvent)
         self.AddObserver("CharEvent", self.charEvent)
 
-
     def keyPressEvent(self, obj, event):
-        global STARTING_SIZE, beta, sceneRen
-        global freezed, slide, viewangle
-        global fov_text_actor, size_text_actor, xrot_text_actor, slide_text_actor
+        global STARTING_SIZE, STARTING_BETA, sceneRen
+        global freezed, slide, viewangle, autoRotateX
+        global fov_text_actor, size_text_actor, xrot_text_actor, slide_text_actor, freezed_text_actor, frameNumber
+        global isBoxWidgetOn
 
         key = self.parent.GetKeySym()
         if key == 'Shift_L':
@@ -99,13 +110,25 @@ class MyInteractorStyle(vtk.vtkInteractorStyle):
             STARTING_SIZE += 20
             size_text_actor.SetInput("C.Size: " + str(STARTING_SIZE))
         elif key == 'n':
-            beta -= 0.02
+            STARTING_BETA -= 0.02
             xrot_text_actor.SetInput("X Rot.: " + str(round(beta, 3)))
         elif key == 'm':
+            STARTING_BETA += 0.02
             xrot_text_actor.SetInput("X Rot.: " + str(round(beta, 3)))
-            beta += 0.02
         elif key == 'x':
             freezed = not freezed
+
+            if freezed:
+                freezed_text_actor.SetInput("Tracking off!")
+                freezed_text_actor.GetTextProperty().SetColor((1, 0, 0))
+            else:
+                freezed_text_actor.SetInput("Tracking on")
+                freezed_text_actor.GetTextProperty().SetColor((0, 1, 0))
+
+        elif key == 'z':
+            if (autoRotateX == False):
+                autoRotateX = True
+                frameNumber = 0
         elif key == 'p':
             slide += 1
             slide_text_actor.SetInput("Slide: " + str(slide))
@@ -120,11 +143,21 @@ class MyInteractorStyle(vtk.vtkInteractorStyle):
             viewangle -= 1
             sceneRen.GetActiveCamera().SetViewAngle(viewangle)
             fov_text_actor.SetInput("FOV: " + str(viewangle))
+        elif key == 'b':
+            isBoxWidgetOn = not isBoxWidgetOn
+            boxWidget.SetEnabled(isBoxWidgetOn)
+            # print(boxWidget)
+        elif key == 'v':
+            resetMeshDeformation()
+        elif key == 'Escape':
+            iren.GetRenderWindow().Finalize()
+            iren.TerminateApp()
+            cap.release()
 
         print(key)
         return
 
-    def charEvent(self, obj, event): #necessario per bloccare gli eventi automatici della finestra
+    def charEvent(self, obj, event):  # necessario per bloccare gli eventi automatici della finestra
         return
 
 
@@ -154,11 +187,12 @@ def SwitchSingleMeshOpacity(meshid):
 
 
 def SwitchMeshOpacity(name):
-    #recupera l'indice dell'actor della mesh con questo nome
+    # recupera l'indice dell'actor della mesh con questo nome
 
-    for i,n in enumerate(modelnames):
-        if(n[0:4] == name):
-            SwitchSingleMeshOpacity(i) #fatto in questo modo dovrebbe funzionare per tutte le mesh che iniziano con lo stesso nome
+    for i, n in enumerate(modelnames):
+        if (n[0:4] == name):
+            SwitchSingleMeshOpacity(
+                i)  # fatto in questo modo dovrebbe funzionare per tutte le mesh che iniziano con lo stesso nome
 
 
 def SetAllMeshOpacity(value):
@@ -168,26 +202,33 @@ def SetAllMeshOpacity(value):
 
 def SwitchAllMeshOpacity():
     for i in range(len(modelactors)):
-        if(modelopacity[i]==1):
+        if (modelopacity[i] == 1):
             SetAllMeshOpacity(0.5)
-            modelopacity[i]=0.5
+            modelopacity[i] = 0.5
         elif (modelopacity[i] == 0.5):
             SetAllMeshOpacity(0)
-            modelopacity[i]=0
+            modelopacity[i] = 0
         elif (modelopacity[i] == 0):
             SetAllMeshOpacity(1)
-            modelopacity[i]=1
+            modelopacity[i] = 1
 
 
 def Get3dWorldPointFrom2dPoint(point2d):
-    #retMat = np.eye(4) #matrice 4x4 con gli 1 in diagonale
+    # retMat = np.eye(4) #matrice 4x4 con gli 1 in diagonale
+
+    #per fare in modo che la finestra sia ridimensionabile considero la dimensione finestra
+    w, h = renWin.GetSize()
+    x = (point2d[0] * w) / dim[0]
+    y = ((dim[1] - point2d[1]) * h) / dim[1]# correggo l'orientamento del punto sull'immagine per l'asse Y
+
     coord = vtk.vtkCoordinate()
     coord.SetCoordinateSystemToViewport()
-    coord.SetValue(point2d[0], dim[1] - point2d[1]) #correggo l'orientamento del punto sull'immagine per l'asse Y
+    #coord.SetValue(point2d[0], dim[1] - point2d[1])  # correggo l'orientamento del punto sull'immagine per l'asse Y
+    coord.SetValue(x, y)
     cx, cy, cz = coord.GetComputedWorldValue(sceneRen)
 
     origin = sceneRen.GetActiveCamera().GetPosition()
-    #direction = findVec(origin, [cx, cy, cz])
+    # direction = findVec(origin, [cx, cy, cz])
     direction = np.array(findVec(origin, [cx, cy, cz]))
 
     normalized_direction = direction / np.sqrt(np.sum(direction ** 2))
@@ -196,56 +237,55 @@ def Get3dWorldPointFrom2dPoint(point2d):
     vy = origin[1] + normalized_direction[1] * distance
     vz = origin[2] + normalized_direction[2] * distance
 
-    #print("origine camera   : " + str(origin[0]) + ", " + str(origin[1]) + ", " + str(origin[2]))
-    #print("vettore direzione: " + str(normalized_direction[0]) + ", " + str(normalized_direction[1]) + ", " + str(normalized_direction[2]))
-    #print("valori finali    : " + str(vx) + ", " + str(vy) + ", " + str(vz))
+    # print("origine camera   : " + str(origin[0]) + ", " + str(origin[1]) + ", " + str(origin[2]))
+    # print("vettore direzione: " + str(normalized_direction[0]) + ", " + str(normalized_direction[1]) + ", " + str(normalized_direction[2]))
+    # print("valori finali    : " + str(vx) + ", " + str(vy) + ", " + str(vz))
 
     return [vx, vy, vz]
 
 
-#effettua un ciclo su ogni actor (mesh) e imposta la sua world matrix
+# effettua un ciclo su ogni actor (mesh) e imposta la sua world matrix
 def SetWorldMatrix(apx):
     for a in modelactors:
-        #a.SetPosition(apx)
+        # a.SetPosition(apx)
         a.SetUserMatrix(apx)
 
 
-#dato un punto e un angolo X + un angolo Y crea la matrice di roto/traslazione
+# dato un punto e un angolo X + un angolo Y crea la matrice di roto/traslazione
 def CreateWorldMatrix(apex3d, angleZ):
     t = vtk.vtkMatrix4x4()
     rz = vtk.vtkMatrix4x4()
-    #ry = vtk.vtkMatrix4x4()
+    # ry = vtk.vtkMatrix4x4()
     rx = vtk.vtkMatrix4x4()
     w = vtk.vtkMatrix4x4()
 
-    #traslazione
+    # traslazione
     t.SetElement(0, 3, apex3d[0])
     t.SetElement(1, 3, apex3d[1])
     t.SetElement(2, 3, apex3d[2])
 
-    #setting Z rotation
+    # setting Z rotation
     rz.SetElement(0, 0, cos(angleZ))
     rz.SetElement(1, 1, cos(angleZ))
     rz.SetElement(0, 1, -sin(angleZ))
     rz.SetElement(1, 0, sin(angleZ))
 
-    #rotazione y (+180 se mesh caricata storta)
-    #ry.SetElement(0, 0, cos(np.pi))
-    #ry.SetElement(0, 2, sin(np.pi))
-    #ry.SetElement(2, 0, -sin(np.pi))
-    #ry.SetElement(2, 2, cos(np.pi))
+    # rotazione y (+180 se mesh caricata storta)
+    # ry.SetElement(0, 0, cos(np.pi))
+    # ry.SetElement(0, 2, sin(np.pi))
+    # ry.SetElement(2, 0, -sin(np.pi))
+    # ry.SetElement(2, 2, cos(np.pi))
 
-    #rotazione x
+    # rotazione x
     rx.SetElement(1, 1, cos(beta))
     rx.SetElement(1, 2, -sin(beta))
     rx.SetElement(2, 1, sin(beta))
     rx.SetElement(2, 2, cos(beta))
 
-
-    #setting X rotation w = t * rz * ry * rx
+    # setting X rotation w = t * rz * ry * rx
     vtk.vtkMatrix4x4().Multiply4x4(t, rz, w)
     vtk.vtkMatrix4x4().Multiply4x4(w, rx, w)
-    #vtk.vtkMatrix4x4().Multiply4x4(w, ry, w)
+    # vtk.vtkMatrix4x4().Multiply4x4(w, ry, w)
     return w
 
 
@@ -253,23 +293,23 @@ def SetMeshColor(name):
     nc = vtk.vtkNamedColors()
 
     if name[0:4].lower() == "eles":
-        color = nc.GetColor3d("Lime") #verde
+        color = nc.GetColor3d("Lime")  # verde
     if name[0:4].lower() == "iles":
-        color = nc.GetColor3d("DarkGreen")#verde scuro
+        color = nc.GetColor3d("DarkGreen")  # verde scuro
     if name[0:4].lower() == "lfas":
-        color = nc.GetColor3d("Blue") #blu
+        color = nc.GetColor3d("Blue")  # blu
     if name[0:4].lower() == "rfas":
-        color = nc.GetColor3d("Blue") #blu
+        color = nc.GetColor3d("Blue")  # blu
     if name[0:4].lower() == "inte":
-        color = nc.GetColor3d("Black")   #nero
+        color = nc.GetColor3d("Black")  # nero
     if name[0:4].lower() == "porz":
-        color = nc.GetColor3d("Orange") #arancione
+        color = nc.GetColor3d("Orange")  # arancione
     if name[0:4].lower() == "pros":
-        color = nc.GetColor3d("Gray") # grigio
+        color = nc.GetColor3d("Gray")  # grigio
     if name[0:4].lower() == "sfin":
-        color = nc.GetColor3d("DarkOrange") #arancione scuro
+        color = nc.GetColor3d("DarkOrange")  # arancione scuro
     if name[0:4].lower() == "uret":
-        color = nc.GetColor3d("Yellow") # giallo
+        color = nc.GetColor3d("Yellow")  # giallo
     return color
 
 
@@ -280,8 +320,8 @@ def load_models_and_create_actors():
         break
 
     idx = 0
-    for f in modelfiles: #ogni mesh ha bisogno del suo actor e mapper
-        print("Importing "+f)
+    for f in modelfiles:  # ogni mesh ha bisogno del suo actor e mapper
+        print("Importing " + f)
         modelnames.append(os.path.splitext(f.lower())[0])  # tolgo l'estensione dal nome
 
         importer = vtkOBJReader()
@@ -302,7 +342,6 @@ def load_models_and_create_actors():
 
 
 def SetTextWidgets():
-
     fov_text_actor.SetInput("FOV: " + str(viewangle))
     fov_text_actor.GetTextProperty().SetColor((1, 1, 1))
 
@@ -315,10 +354,14 @@ def SetTextWidgets():
     slide_text_actor.SetInput("Slide: " + str(slide))
     slide_text_actor.GetTextProperty().SetColor((1, 1, 1))
 
+    freezed_text_actor.SetInput("Tracking on")
+    freezed_text_actor.GetTextProperty().SetColor((0, 1, 0))
+
     sceneRen.AddActor(fov_text_actor)
     sceneRen.AddActor(size_text_actor)
     sceneRen.AddActor(xrot_text_actor)
     sceneRen.AddActor(slide_text_actor)
+    sceneRen.AddActor(freezed_text_actor)
 
     # Create the text representation. Used for positioning the text_actor
     text_representation1 = vtk.vtkTextRepresentation()
@@ -332,6 +375,9 @@ def SetTextWidgets():
 
     text_representation4 = vtk.vtkTextRepresentation()
     text_representation4.GetPositionCoordinate().SetValue(0.01, 0.55)
+
+    text_representation5 = vtk.vtkTextRepresentation()
+    text_representation5.GetPositionCoordinate().SetValue(0.01, 0.25)
 
     text_widget1 = vtk.vtkTextWidget()
     text_widget1.SetRepresentation(text_representation1)
@@ -372,6 +418,62 @@ def SetTextWidgets():
     text_widget4.GetTextActor().GetTextProperty().SetFontSize(20)
     text_widget4.SelectableOff()
     text_widget4.On()
+
+    text_widget5 = vtk.vtkTextWidget()
+    text_widget5.SetRepresentation(text_representation5)
+    text_widget5.SetInteractor(iren)
+    text_widget5.SetTextActor(freezed_text_actor)
+    text_widget5.GetTextActor().SetTextScaleModeToNone()
+    text_widget5.GetTextActor().GetTextProperty().SetJustificationToLeft()
+    text_widget5.GetTextActor().GetTextProperty().SetFontSize(18)
+    text_widget5.SelectableOff()
+    text_widget5.On()
+
+
+def resetMeshDeformation():
+    for i, ma in enumerate(modelactors):
+        ma.SetMapper(modelmappers[i])
+
+
+def SetBoxWidget():
+    boxWidget.SetInteractor(iren)
+    for i, n in enumerate(modelnames):
+        if (n[0:4] == "pros"):
+            boxWidget.SetProp3D(modelactors[i])
+    boxWidget.SetPlaceFactor(1.5)  # Make the box larger than the actor
+    boxWidget.PlaceWidget()
+    # boxWidget.AddObserver("InteractionEvent", boxCallback)
+    boxWidget.AddObserver("EndInteractionEvent", boxEndInteractionCallback)
+    boxWidget.AddObserver("InteractionEvent", boxInteractionCallback)
+
+
+def boxEndInteractionCallback(obj, event):
+    for i, n in enumerate(modelnames):
+        if (n[0:4] == "pros"):
+            boxWidget.SetProp3D(modelactors[i])
+            #boxWidget.SetPlaceFactor(1.5)
+            #boxWidget.PlaceWidget()
+
+
+def boxInteractionCallback(obj, event):
+    pd_box = vtk.vtkPolyData()  # i dati DEI VERTICI DELLA box widget
+    obj.GetPolyData(pd_box)
+
+    # triangolo la mesh del boxWidged che ha le facce quad alrimenti SetControlMeshData si incazza
+    tringlefilter = vtk.vtkTriangleFilter()
+    tringlefilter.SetInputData(pd_box)
+    tringlefilter.Update()
+
+    for i, n in enumerate(modelnames):
+
+        deform = vtk.vtkDeformPointSet()  # questo effettivamente deforma secondo il box del widget
+        deform.SetInputData(modelactors[i].GetMapper().GetInput())
+        deform.SetControlMeshData(tringlefilter.GetOutput())  # il boxWidget Triangolato è la mesh che guida la deformazione
+        deform.Update()
+        polyMapper = vtk.vtkPolyDataMapper()
+        polyMapper.SetInputConnection(deform.GetOutputPort())
+        modelactors[i].SetMapper(polyMapper)
+        modelactors[i].SetUserMatrix(world_matrix)
 
 
 def MatToVtKImageRender(imageToVtk):
@@ -420,19 +522,18 @@ if __name__ == "__main__":
     models = ["MobileNet", "VGG", "ResNet", "U-Net"]
 
     video_source = 0
-    if type(args["video_source"]) == int:
+    if args["video_source"].isdigit():
         video_source = int(args["video_source"])
+        print("Accessing video source:" + str(video_source))
     else:
         video_source = str(args["video_source"])
-
-    print("Accessing video source:" + video_source)
+        print("Accessing video source:" + video_source)
 
     #creo gli attori leggendo i file obj
     load_models_and_create_actors()
 
-    #parte di creazione finestra vtk
+    # parte di creazione finestra vtk
 
-    renWin = vtk.vtkRenderWindow()
     renWin.SetNumberOfLayers(2)
     renWin.AddRenderer(backgr)
     renWin.AddRenderer(sceneRen)
@@ -444,11 +545,11 @@ if __name__ == "__main__":
 
     imageActor = vtk.vtkImageActor()
     dataImporter = vtk.vtkImageImport()
-    dataImporter.SetWholeExtent(0, dim[0]-1, 0, dim[1]-1, 0, 0)
+    dataImporter.SetWholeExtent(0, dim[0] - 1, 0, dim[1] - 1, 0, 0)
     imageActor.SetInputData(dataImporter.GetOutput())
     backgr.AddActor(imageActor)
 
-    #iren.AddObserver("KeyPressEvent", key_pressed_callback)
+    # iren.AddObserver("KeyPressEvent", key_pressed_callback)
     iren.SetInteractorStyle(MyInteractorStyle())
 
     #################### il layer di backgound è flippato x via della direzione Y tra texture e 3D
@@ -456,7 +557,7 @@ if __name__ == "__main__":
     # vtkimg = cv2.flip(vtkimg, 0) #altrimenti l'immagine risulta capolvolta (solita question del Y-flip)
     #backgr.GetActiveCamera().SetViewUp(0, -1, 0)
 
-    #aggiungo degli assi di riferimento
+    # aggiungo degli assi di riferimento
     refaxes = MakeAxesActor()
     om = vtk.vtkOrientationMarkerWidget()
     om.SetOrientationMarker(refaxes)
@@ -467,9 +568,9 @@ if __name__ == "__main__":
     SetTextWidgets()
 
     iren.Initialize()
-    #iren.Start() #non serve perchè abbiamo il nostro ciclo
+    # iren.Start() #non serve perchè abbiamo il nostro ciclo
+    sceneRen.GetActiveCamera().SetViewAngle(viewangle)
 
-    viewangle = sceneRen.GetActiveCamera().GetViewAngle()
     fov_text_actor.SetInput("FOV: " + str(viewangle))
 
     #fine parte di vtk
@@ -511,20 +612,56 @@ if __name__ == "__main__":
     elif run_model == 3:
         model = model_from_checkpoint_path("..\\Checkpoints\\NewTool\\new_unet_tool")
 
-    cap = cv2.VideoCapture(video_source)
-    out_vid = cv2.VideoWriter('..\\OutputVideo\\Degree.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 3, (960, 540))
+    if save_video == "Y":
+        try:
+            out_vid = cv2.VideoWriter('..\\OutputVideo\\Degree.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 3, (960, 540))
+        except cv2.error as e:
+            print("cv2.error:", e)
+        except Exception as e:
+            print("Exception:", e)
+        else:
+            print("no problem reported")
 
-    # Uso il contatore perchè servono almeno 100 frames per permettere a beta di stabilizzarsi
-    i = 0
+    try:
+        cap = cv2.VideoCapture(video_source)
+    except cv2.error as e:
+        print("cv2.error:", e)
+    except Exception as e:
+        print("Exception:", e)
+    else:
+        print("no problem reported")
+
+    print("Video CODEC: " + str(cap.get(cv2.CAP_PROP_FOURCC)))
+    print("Video Height: " + str(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    print("Video Width : " + str(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
+    print("Is video source correctly opened? " + str(cap.isOpened()))
+
+    # cap.set(cv2.CAP_PROP_POS_FRAMES, 1000)
+
+    # out_vid = cv2.VideoWriter('..\\OutputVideo\\Degree.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 3, (960, 540))
+
+    angleFilter = [0, 0, 0, 0, 0,
+                   0, 0, 0, 0, 0,
+                   0, 0, 0, 0, 0,
+                   0, 0, 0, 0, 0,
+                   0, 0, 0, 0, 0]
+
+    SetBoxWidget()
+    tform = vtk.vtkTransform()
 
     while cap.isOpened():
 
-        ret, frame = cap.read()
+        try:
+            ret, frame = cap.read()
+        except cv2.error as e:
+            print("errore nessun frame: " + e.what())
+            break
+
         if not ret:
             break
 
-        if video_source.split("\\")[-1] == "New.MP4":
-            frame = frame[20:20 + 600, int(1920 / 2) - int(1066 / 2): int(1920 / 2) + int(1066 / 2)]
+        # if video_source.split("\\")[-1] == "New.MP4":
+        #    frame = frame[20:20 + 600, int(1920 / 2) - int(1066 / 2): int(1920 / 2) + int(1066 / 2)]
 
         frame = cv2.resize(frame, dim, interpolation=cv2.INTER_LINEAR)
 
@@ -549,11 +686,40 @@ if __name__ == "__main__":
 
         (channel_b, channel_g, channel_r) = cv2.split(img)  # ciascuna con un solo canale
 
-        # trovo i contorni per la segmentazione del catetere e degli strumenti
-        contours_b, hierarchy_b = cv2.findContours(channel_b.astype('uint8'), cv2.RETR_TREE,
-                                                   cv2.CHAIN_APPROX_SIMPLE)
-        contours_g, hierarchy_g = cv2.findContours(channel_g.astype('uint8'), cv2.RETR_TREE,
-                                                   cv2.CHAIN_APPROX_SIMPLE)
+        if (autoRotateX):
+            STARTING_BETA = 0
+            # parte alternativa per il calcolo della Xrot basata sulla quantità di pixel trovati...
+            # entra nel ciclo a richiesta
+            angleratio = getAngleFromGreenPixels(channel_g)
+            angleFilter[frameNumber] = angleratio
+            angleratiomean = np.mean(angleFilter)
+
+            beta = STARTING_BETA - (angleratiomean - 1) * 0.525  # circa 30 gradi
+            xrot_text_actor.SetInput("X Rot.: " + str(round(beta, 3)))
+
+            STARTING_BETA = beta
+
+            print("Calibrating X rot: " + str(round(100 * frameNumber / 24, 0)))
+
+            if (frameNumber >= 24):
+                autoRotateX = False
+
+            frameNumber += 1
+        else:
+            beta = STARTING_BETA
+
+            # parte alternativa per il calcolo della Xrot basata sulla quantità di pixel trovati... FINE
+
+            # trovo i contorni per la segmentazione del catetere e degli strumenti
+        """
+        #questa parte va bene per opencv 4+ (che restituisce solo 2 valori con find contours)
+        contours_b, hierarchy_b = cv2.findContours(channel_b.astype('uint8'), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours_g, hierarchy_g = cv2.findContours(channel_g.astype('uint8'), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        """
+        image_b, contours_b, hierarchy_b = cv2.findContours(channel_b.astype('uint8'), cv2.RETR_TREE,
+                                                            cv2.CHAIN_APPROX_SIMPLE)
+        image_g, contours_g, hierarchy_g = cv2.findContours(channel_g.astype('uint8'), cv2.RETR_TREE,
+                                                            cv2.CHAIN_APPROX_SIMPLE)
 
         # copio il frame dato che opencv va a disegnare sull'originale
         output = frame.copy()
@@ -593,6 +759,47 @@ if __name__ == "__main__":
             if plot_center == "Y":
                 cv2.circle(output, (cX, cY), 7, (0, 0, 0), -1)
 
+            # divido i punti dell'hull tra sinistri e destri
+            '''
+            leftPoints, rightPoint = divideHullPoints(hull, cX)
+
+            #for i in range(0, len(leftPoints)):
+            if len(leftPoints) > 2:
+                cv2.circle(img, (leftPoints[0][0], leftPoints[0][1]), 2, (255, 0, 255), thickness=1)
+                cv2.circle(img, (leftPoints[1][0], leftPoints[1][1]), 2, (255, 0, 255), thickness=3)
+                cv2.circle(img, (leftPoints[2][0], leftPoints[2][1]), 2, (255, 0, 255), thickness=3)
+            if len(rightPoint) > 2:
+                cv2.circle(img, (rightPoint[0][0], rightPoint[0][1]), 2, (255, 255, 0), thickness=1)
+                cv2.circle(img, (rightPoint[1][0], rightPoint[1][1]), 2, (255, 255, 0), thickness=3)
+                cv2.circle(img, (rightPoint[2][0], rightPoint[2][1]), 2, (255, 255, 0), thickness=3)
+                #cv2.circle(img, (rightPoint[len(rightPoint)-i-1][0], rightPoint[len(rightPoint)-i-1][1]), 2, (255, 0, 0), thickness=2)
+
+
+            #leftL = cv2.fitLine(leftPoints, cv2.DIST_L2, 0, 0.01, 0.01)
+            #rightL = cv2.fitLine(rightPoint, cv2.DIST_L2, 0, 0.01, 0.01)
+
+            #cv2.line(img, (leftL[2], leftL[3]), (leftL[2] + leftL[0] * 150, leftL[3] + leftL[1] * 150), (255, 255, 0), 2)
+            #cv2.line(img, (rightL[2], rightL[3]), (rightL[2] + rightL[0] * 150, rightL[3] + rightL[1] * 150),
+                     (0, 255, 255), 2)
+
+            slope_l = (leftL[3] - leftL[1]) / (leftL[2] - leftL[0])
+            slope_r = (rightL[3] - rightL[1]) / (rightL[2] - rightL[0])
+
+            slope_tg = (slope_r - slope_l) / (1 + slope_r * slope_l)
+
+            angle_between = math.degrees(np.arctan(slope_tg))  # %360 per averlo sui 360
+
+            x_angle_buffer[2] = x_angle_buffer[1]
+            x_angle_buffer[1] = x_angle_buffer[0]
+            x_angle_buffer[0] = np.arctan(slope_tg)
+
+            if write_x_file == "Y":
+                with open('x_file.csv', mode='a', newline='') as x_file:
+                    x_file = csv.writer(x_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    x_file.writerow([str(i), str(x_angle_buffer[0]), str(x_angle_buffer[0] - x_angle_buffer[1]),
+                                     str(x_angle_buffer[0] + x_angle_buffer[2] - 2 * x_angle_buffer[1])])
+            '''
+            '''
             # converto e faccio un dilatazione per rendere i contorni più spessi in modo che sia più facile
             # individuare le linee da HoughLines
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -756,7 +963,9 @@ if __name__ == "__main__":
                 elif w_gradual is False and 8 > weight_with_Xprevious > 4:
                     beta = 0.5
             print(beta)
+            '''
 
+            img_contours = img
 
             # se il contorno almeno 4 vertici
             if len(max_c) > 5:
@@ -806,6 +1015,9 @@ if __name__ == "__main__":
 
                 if not freezed:
                     SetWorldMatrix(world_matrix)
+                    # la parte sotto riguarda il transform box
+                    tform.SetMatrix(world_matrix)
+                    boxWidget.SetTransform(tform)
 
 
                 # Trovo l'altezza e la larghezza del catetere, serve per fare lo scalamento su vtk
@@ -823,8 +1035,11 @@ if __name__ == "__main__":
                 cv2.imshow("Contours", img_contours)
 
             if show_output == "Y":
-                cv2.putText(output, "Frame {}".format(i), (800, 100), cv2.FONT_HERSHEY_COMPLEX, 0.5, (255, 255, 255), 1)
-                cv2.putText(output, "a: {:.8}".format(float(angle_between)), (800, 200), cv2.FONT_HERSHEY_COMPLEX, 0.5,
+                # cv2.putText(output, "Frame {}".format(i), (800, 100), cv2.FONT_HERSHEY_COMPLEX, 0.5, (255, 255, 255), 1)
+                # cv2.putText(output, "a: {:.8}".format(float(angle_between)), (800, 200), cv2.FONT_HERSHEY_COMPLEX, 0.5,
+                #            (255, 255, 255), 1)
+                cv2.putText(output, "a: {:.8}".format(float(beta / 3.14145 * 180)), (800, 200),
+                            cv2.FONT_HERSHEY_COMPLEX, 0.5,
                             (255, 255, 255), 1)
                 if 8 > weight_gradual > 4:
                     cv2.circle(output, (850, 330), 10, (0, 255, 0), thickness=20)
@@ -841,7 +1056,8 @@ if __name__ == "__main__":
         if cv2.waitKey(25) & 0xFF == ord('q'):
             break
 
-        i += 1
+        # i += 1
     cap.release()
-    out_vid.release()
+    if save_video == "Y":
+        out_vid.release()
     cv2.destroyAllWindows()

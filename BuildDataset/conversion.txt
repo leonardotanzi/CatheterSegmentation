@@ -1,4 +1,4 @@
 python C:\Users\d053175\Desktop\GitHubLibs\labelme-master\labelme-master\examples\semantic_segmentation\labelme2voc.py C:\Users\d053175\Desktop\Catetere\Dataset\i_30\Train\NewTool\JSON C:\Users\d053175\Desktop\data2 --labels C:\Users\d053175\Desktop\Catetere\CatheterSegmentation\labels.txt
 
 
-python ..\labelme\examples\semantic_segmentation\labelme2voc.py ..\in ..\data2 --labels CatheterSegmentation\Dataset\labels.txt
+python C:\Users\Leonardo\Desktop\GitHubLibs\labelme\examples\semantic_segmentation\labelme2voc.py  C:\Users\Leonardo\Desktop\Catetere\UpdatedDataset\Test\New C:\Users\Leonardo\Desktop\data2 --labels C:\Users\Leonardo\Desktop\Catetere\CatheterSegmentation\BuildDataset\labels.txt

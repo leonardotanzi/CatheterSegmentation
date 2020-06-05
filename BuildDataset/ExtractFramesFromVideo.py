@@ -1,8 +1,8 @@
 import cv2
  
 # Opens the Video file
-cap= cv2.VideoCapture("..\\..\\RealTime Video\\New.MP4")
-crop = "Yes"
+cap= cv2.VideoCapture("..\\..\\RealTime Video\\CV_2_cropped.MP4")
+crop = "No"
 i=1
 while(cap.isOpened()):
     ret, frame = cap.read()
@@ -13,8 +13,8 @@ while(cap.isOpened()):
         # cv2.waitKey()
     if ret == False:
         break
-    if i%10 == 0:
-        cv2.imwrite("..\\..\\..\\CatetereTest\\" + "frame" + str(i) + ".png", crop_img)
+    if i%50 == 0 and i%30 != 0:
+        cv2.imwrite("..\\..\\UpdatedDataset\\Test\\Original\\" + "frame" + str(i) + ".png", frame)
     i+=1
  
 cap.release()
